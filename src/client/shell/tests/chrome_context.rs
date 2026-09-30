@@ -378,6 +378,93 @@ fn context_menus_capture_stable_targets_and_route_actions() {
 }
 
 #[test]
+fn workspace_menu_marks_a_workspace_unread() {
+    let mut initial = snapshot();
+    let mut workspace = initial.workspaces[0].clone();
+    workspace.workspace_id = "ws_2".into();
+    workspace.active_tab_id = "tab_2".into();
+    workspace.number = 2;
+    workspace.label = "other".into();
+    workspace.focused = false;
+    initial.workspaces.push(workspace);
+    let mut tab = initial.tabs[0].clone();
+    tab.tab_id = "tab_2".into();
+    tab.workspace_id = "ws_2".into();
+    tab.focused = false;
+    initial.tabs.push(tab);
+    let mut pane = initial.panes[0].clone();
+    pane.pane_id = "pane_2".into();
+    pane.workspace_id = "ws_2".into();
+    pane.tab_id = "tab_2".into();
+    pane.focused = false;
+    initial.panes.push(pane);
+    let agent = |pane_id: &str, workspace_id: &str, tab_id: &str| ClientShellAgent {
+        pane_id: pane_id.into(),
+        workspace_id: workspace_id.into(),
+        tab_id: tab_id.into(),
+        name: None,
+        display_agent: None,
+        agent: None,
+        title: None,
+        terminal_title: None,
+        terminal_title_stripped: None,
+        agent_status: AgentStatus::Idle,
+        state_change_seq: 1,
+        state_labels: Vec::new(),
+        tokens: Vec::new(),
+        focused: false,
+    };
+    initial.agents = vec![
+        agent("pane_1", "ws_1", "tab_1"),
+        agent("pane_2", "ws_2", "tab_2"),
+    ];
+    let mut state = ClientShellState::new(ClientShellConfig::from_config(&Config::default()));
+    state.set_snapshot(Box::new(initial.clone()));
+    let mark_unread_index = |state: &ClientShellState| match state.overlay.as_ref() {
+        Some(ClientShellOverlay::ContextMenu(menu)) => menu
+            .items()
+            .iter()
+            .position(|item| item.action == ClientContextMenuAction::MarkUnread),
+        _ => panic!("workspace context menu"),
+    };
+    let status = |state: &ClientShellState, pane_id: &str| {
+        state
+            .snapshot
+            .as_deref()
+            .and_then(|snapshot| {
+                snapshot
+                    .agents
+                    .iter()
+                    .find(|agent| agent.pane_id == pane_id)
+            })
+            .map(|agent| agent.agent_status)
+    };
+
+    state.open_workspace_context_menu("ws_1".into(), 0, 0);
+    assert_eq!(mark_unread_index(&state), Some(1));
+
+    state.open_workspace_context_menu("ws_2".into(), 0, 0);
+    let index = mark_unread_index(&state).expect("mark as unread item");
+    let mut outcome = ClientShellInput::default();
+    state.activate_context_menu_item(index, &mut outcome);
+    assert!(outcome.actions.is_empty());
+    assert_eq!(status(&state, "pane_1"), Some(AgentStatus::Idle));
+    assert_eq!(status(&state, "pane_2"), Some(AgentStatus::Done));
+    assert!(state.snapshot.as_deref().is_some_and(|snapshot| {
+        snapshot.workspaces.iter().any(|workspace| {
+            workspace.workspace_id == "ws_2" && workspace.agent_status == AgentStatus::Done
+        })
+    }));
+
+    let mut next = initial;
+    next.revision = 2;
+    state.set_snapshot(Box::new(next));
+    assert_eq!(status(&state, "pane_2"), Some(AgentStatus::Done));
+    state.open_workspace_context_menu("ws_2".into(), 0, 0);
+    assert_eq!(mark_unread_index(&state), None);
+}
+
+#[test]
 fn global_menu_opens_from_sidebar_and_routes_client_actions() {
     let mut state = ClientShellState::new(ClientShellConfig::from_config(&Config::default()));
     state.set_snapshot(Box::new(snapshot()));

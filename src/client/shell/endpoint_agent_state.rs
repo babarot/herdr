@@ -13,6 +13,12 @@ pub(super) struct EndpointAgentPresentation {
         Option<u64>,
         crate::protocol::endpoint::EndpointAgentCompletions,
     )>,
+    // Panes marked unread, with the state they were marked in: they count as
+    // completed work until they are viewed or the agent moves on
+    marked_unread: HashMap<String, u64>,
+    // Marked panes on screen: they stay unread until a surface without them
+    // (another workspace or tab) is presented
+    held_unread: HashMap<String, u64>,
 }
 
 impl EndpointAgentPresentation {
@@ -50,6 +56,8 @@ impl EndpointAgentPresentation {
             self.acknowledged.clear();
             self.completed.clear();
             self.working.clear();
+            self.marked_unread.clear();
+            self.held_unread.clear();
             self.acknowledged.extend(
                 snapshot
                     .agents
@@ -68,6 +76,13 @@ impl EndpointAgentPresentation {
             .retain(|pane_id, _| pane_ids.contains(pane_id.as_str()));
         self.working
             .retain(|pane_id| pane_ids.contains(pane_id.as_str()));
+        self.marked_unread.retain(|pane_id, sequence| {
+            snapshot.agents.iter().any(|agent| {
+                &agent.pane_id == pane_id && agent.state_change_seq == *sequence
+            })
+        });
+        self.held_unread
+            .retain(|pane_id, _| self.marked_unread.contains_key(pane_id));
         let completions = self
             .pending_completions
             .take()
@@ -98,7 +113,8 @@ impl EndpointAgentPresentation {
                             completions.get(&agent.pane_id) == Some(&agent.state_change_seq)
                         },
                     );
-                    if completed {
+                    let marked = self.marked_unread.contains_key(&agent.pane_id);
+                    if completed || marked {
                         self.completed
                             .insert(agent.pane_id.clone(), agent.state_change_seq);
                     } else {
@@ -129,6 +145,8 @@ impl EndpointAgentPresentation {
             return false;
         }
 
+        self.held_unread
+            .retain(|pane_id, _| surface.panes.iter().any(|pane| &pane.pane_id == pane_id));
         let mut changed = false;
         for pane in &surface.panes {
             let Some(agent) = snapshot
@@ -138,9 +156,43 @@ impl EndpointAgentPresentation {
             else {
                 continue;
             };
+            if self.held_unread.contains_key(&agent.pane_id) {
+                continue;
+            }
+            self.marked_unread.remove(&agent.pane_id);
             let acknowledged = self.acknowledged.entry(agent.pane_id.clone()).or_default();
             if *acknowledged < agent.state_change_seq {
                 *acknowledged = agent.state_change_seq;
+                changed = true;
+            }
+        }
+        if changed {
+            for agent in &mut snapshot.agents {
+                agent.agent_status = self.projected_status(agent);
+            }
+            project_aggregate_status(snapshot);
+        }
+        changed
+    }
+
+    // Forgets that the workspace's idle agents were viewed, so they show Done
+    // again until they are viewed anew: the ones on screen once the user has
+    // left them, the others when a surface presents them
+    pub(super) fn mark_workspace_unread(
+        &mut self,
+        snapshot: &mut ClientShellSnapshot,
+        workspace_id: &str,
+    ) -> bool {
+        let mut changed = false;
+        for agent in &snapshot.agents {
+            if agent.workspace_id == workspace_id && agent.agent_status == AgentStatus::Idle {
+                self.acknowledged.remove(&agent.pane_id);
+                self.completed
+                    .insert(agent.pane_id.clone(), agent.state_change_seq);
+                self.marked_unread
+                    .insert(agent.pane_id.clone(), agent.state_change_seq);
+                self.held_unread
+                    .insert(agent.pane_id.clone(), agent.state_change_seq);
                 changed = true;
             }
         }
@@ -461,6 +513,60 @@ mod tests {
             completed_for_background.agents[0].agent_status,
             AgentStatus::Done
         );
+    }
+
+    #[test]
+    fn workspace_marked_unread_on_screen_stays_unread_until_left() {
+        let mut presentation = EndpointAgentPresentation::default();
+        let mut idle = snapshot(AgentStatus::Idle, 4, 1);
+        presentation.project_snapshot(&mut idle);
+        assert!(presentation.mark_workspace_unread(&mut idle, "workspace"));
+        assert_eq!(idle.agents[0].agent_status, AgentStatus::Done);
+
+        assert!(!presentation.acknowledge_surface(&mut idle, &surface(1), Some(true)));
+        assert_eq!(idle.agents[0].agent_status, AgentStatus::Done);
+
+        let mut elsewhere = surface(1);
+        elsewhere.panes.clear();
+        assert!(!presentation.acknowledge_surface(&mut idle, &elsewhere, Some(true)));
+        assert!(presentation.acknowledge_surface(&mut idle, &surface(1), Some(true)));
+        assert_eq!(idle.agents[0].agent_status, AgentStatus::Idle);
+    }
+
+    #[test]
+    fn workspace_marked_unread_survives_server_completions_until_viewed() {
+        let mut presentation = EndpointAgentPresentation::default();
+        let mut idle = snapshot(AgentStatus::Idle, 4, 1);
+        presentation.project_snapshot(&mut idle);
+        presentation.mark_workspace_unread(&mut idle, "workspace");
+
+        let mut next = snapshot(AgentStatus::Idle, 4, 2);
+        presentation.receive_completions(None, completions("endpoint-boot", 2, None));
+        presentation.project_snapshot(&mut next);
+        assert_eq!(next.agents[0].agent_status, AgentStatus::Done);
+
+        let mut elsewhere = surface(2);
+        elsewhere.panes.clear();
+        presentation.acknowledge_surface(&mut next, &elsewhere, Some(true));
+        assert!(presentation.acknowledge_surface(&mut next, &surface(2), Some(true)));
+        assert_eq!(next.agents[0].agent_status, AgentStatus::Idle);
+
+        let mut later = snapshot(AgentStatus::Idle, 4, 3);
+        presentation.project_snapshot(&mut later);
+        assert_eq!(later.agents[0].agent_status, AgentStatus::Idle);
+    }
+
+    #[test]
+    fn agent_marked_unread_on_screen_is_seen_once_it_moves_on() {
+        let mut presentation = EndpointAgentPresentation::default();
+        let mut idle = snapshot(AgentStatus::Idle, 4, 1);
+        presentation.project_snapshot(&mut idle);
+        presentation.mark_workspace_unread(&mut idle, "workspace");
+        let mut completed = snapshot(AgentStatus::Idle, 6, 2);
+        presentation.project_snapshot(&mut completed);
+
+        assert!(presentation.acknowledge_surface(&mut completed, &surface(2), Some(true)));
+        assert_eq!(completed.agents[0].agent_status, AgentStatus::Idle);
     }
 
     #[test]
