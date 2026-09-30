@@ -517,6 +517,7 @@ pub(super) enum ClientContextMenuAction {
     OpenWorktree,
     RemoveWorktree,
     ToggleGroup,
+    MarkUnread,
     NewTab,
     RenamePane,
     ClearPaneName,
@@ -536,6 +537,9 @@ pub(super) enum ClientContextMenuTarget {
         is_linked_worktree: bool,
         has_worktree_children: bool,
         collapsed: bool,
+        // Idle agents the user has seen: marking them unread sticks until they
+        // are viewed, or in the focused workspace until the user comes back
+        can_mark_unread: bool,
     },
     Tab {
         tab_id: String,

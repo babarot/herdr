@@ -5,7 +5,7 @@ impl ClientContextMenuOverlay {
         use ClientContextMenuAction as Action;
 
         let item = |label, action| ClientContextMenuItem { label, action };
-        match &self.target {
+        let mut items = match &self.target {
             ClientContextMenuTarget::Workspace { is_git: false, .. } => {
                 vec![item("Rename", Action::Rename), item("Close", Action::Close)]
             }
@@ -75,7 +75,16 @@ impl ClientContextMenuOverlay {
                 ]);
                 items
             }
+        };
+        if let ClientContextMenuTarget::Workspace {
+            can_mark_unread: true,
+            ..
+        } = &self.target
+        {
+            // Next to Rename, ahead of Close and the worktree actions
+            items.insert(1, item("Mark as unread", Action::MarkUnread));
         }
+        items
     }
 }
 
@@ -109,6 +118,10 @@ impl ClientShellState {
         let collapsed = worktree.is_some_and(|worktree| {
             self.group_is_collapsed(&self.active_endpoint_id, &worktree.key)
         });
+        let can_mark_unread = snapshot.agents.iter().any(|agent| {
+            agent.workspace_id == workspace_id
+                && agent.agent_status == crate::api::schema::AgentStatus::Idle
+        });
         self.overlay = Some(ClientShellOverlay::ContextMenu(ClientContextMenuOverlay {
             target: ClientContextMenuTarget::Workspace {
                 workspace_id,
@@ -116,6 +129,7 @@ impl ClientShellState {
                 is_linked_worktree: worktree.is_some_and(|worktree| worktree.is_linked_worktree),
                 has_worktree_children,
                 collapsed,
+                can_mark_unread,
             },
             x,
             y,
@@ -283,6 +297,9 @@ impl ClientShellState {
                     self.toggle_collapsed_group(&endpoint_id, key);
                     self.persist_chrome_preferences(outcome);
                 }
+            }
+            ClientContextMenuAction::MarkUnread => {
+                self.mark_active_endpoint_workspace_unread(&workspace_id);
             }
             _ => {}
         }
