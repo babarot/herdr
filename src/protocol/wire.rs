@@ -1062,6 +1062,9 @@ pub struct ClientShellWorktree {
     pub key: String,
     pub label: String,
     pub is_linked_worktree: bool,
+    // Directory name of a linked worktree's checkout
+    #[serde(default)]
+    pub checkout_name: Option<String>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
