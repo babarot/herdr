@@ -68,6 +68,14 @@ pub(super) fn snapshot(
                     .worktree
                     .map(|worktree| protocol::ClientShellWorktree {
                         key: worktree.repo_key,
+                        checkout_name: worktree
+                            .is_linked_worktree
+                            .then(|| {
+                                std::path::Path::new(&worktree.checkout_path)
+                                    .file_name()
+                                    .map(|name| name.to_string_lossy().into_owned())
+                            })
+                            .flatten(),
                         label: worktree.repo_name,
                         is_linked_worktree: worktree.is_linked_worktree,
                     }),

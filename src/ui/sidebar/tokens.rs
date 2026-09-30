@@ -126,6 +126,7 @@ pub(crate) struct SpaceTokenContext<'a> {
     pub(crate) branch: Option<&'a str>,
     pub(crate) state_text: &'a str,
     pub(crate) ahead_behind: Option<(usize, usize)>,
+    pub(crate) worktree: Option<&'a str>,
     pub(crate) tokens: &'a std::collections::HashMap<String, String>,
     pub(crate) suppress_git_details: bool,
 }
@@ -159,6 +160,9 @@ pub(crate) fn space_rows(
                             .filter(|(ahead, behind)| *ahead > 0 || *behind > 0)
                             .map(|(ahead, behind)| ResolvedTokenKind::GitStatus { ahead, behind }),
                         SpaceSidebarToken::GitStatus => None,
+                        SpaceSidebarToken::Worktree => context
+                            .worktree
+                            .map(|worktree| ResolvedTokenKind::Branch(worktree.to_string())),
                         SpaceSidebarToken::Custom(name) => context
                             .tokens
                             .get(name)
@@ -326,6 +330,7 @@ rows = [[{ token = "$load", rules = [{ lt = 50, dim = true }] }]]
             let spaces = space_rows(
                 &config.spaces,
                 SpaceTokenContext {
+                    worktree: None,
                     workspace: "repo",
                     branch: None,
                     state_text: "working",
@@ -375,6 +380,7 @@ rows = [[{ token = "$load", rules = [{ lt = 50, hide = true }] }], ["workspace"]
             let rows = space_rows(
                 &config.spaces,
                 SpaceTokenContext {
+                    worktree: None,
                     workspace: "repo",
                     branch: None,
                     state_text: "working",
@@ -544,6 +550,7 @@ rows = [[{ token = "$load", rules = [{ lt = 50, hide = true }] }], ["workspace"]
             space_rows(
                 &config,
                 SpaceTokenContext {
+                    worktree: None,
                     workspace: "feature",
                     branch: Some("worktree/feature"),
                     state_text: "idle",
@@ -571,6 +578,7 @@ rows = [[{ token = "$load", rules = [{ lt = 50, hide = true }] }], ["workspace"]
             space_rows(
                 &config,
                 SpaceTokenContext {
+                    worktree: None,
                     workspace: "repo",
                     branch: None,
                     state_text: "idle",

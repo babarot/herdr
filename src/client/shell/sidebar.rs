@@ -630,6 +630,10 @@ pub(in crate::client::shell) fn workspace_rows(
             branch: workspace.branch.as_deref(),
             state_text: status_text(status),
             ahead_behind: workspace.git_ahead_behind,
+            worktree: workspace
+                .worktree
+                .as_ref()
+                .and_then(|worktree| worktree.checkout_name.as_deref()),
             tokens: &token_values,
             // A renamed worktree child keeps its branch and ahead/behind; an
             // unrenamed one already shows its branch as its name.

@@ -98,6 +98,7 @@ fn grouped_worktrees_render_parent_branch_and_indented_child() {
         key: "repo".into(),
         label: "repo".into(),
         is_linked_worktree: false,
+        checkout_name: None,
     });
     snapshot.workspaces.push(ClientShellWorkspace {
         workspace_id: "ws_2".into(),
@@ -113,6 +114,7 @@ fn grouped_worktrees_render_parent_branch_and_indented_child() {
             key: "repo".into(),
             label: "repo".into(),
             is_linked_worktree: true,
+            checkout_name: None,
         }),
         focused: false,
         agent_status: AgentStatus::Idle,
@@ -264,6 +266,7 @@ fn workspace_drag_moves_parent_worktree_as_one_block_and_rejects_child() {
         key: "repo".into(),
         label: "repo".into(),
         is_linked_worktree: false,
+        checkout_name: None,
     });
     let mut child = projected.workspaces[0].clone();
     child.workspace_id = "ws_child".into();
@@ -274,6 +277,7 @@ fn workspace_drag_moves_parent_worktree_as_one_block_and_rejects_child() {
         key: "repo".into(),
         label: "repo".into(),
         is_linked_worktree: true,
+        checkout_name: None,
     });
     let mut other = projected.workspaces[0].clone();
     other.workspace_id = "ws_other".into();
@@ -1215,6 +1219,7 @@ fn worktree_remove_escalates_recoverable_failure_to_force_confirmation() {
             key: "repo-key".into(),
             label: "repo".into(),
             is_linked_worktree: true,
+            checkout_name: None,
         });
         let mut state = ClientShellState::new(ClientShellConfig::from_config(&Config::default()));
         state.set_snapshot(Box::new(snapshot));

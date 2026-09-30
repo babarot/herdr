@@ -21,6 +21,7 @@ fn grouped_workspaces() -> ClientShellSnapshot {
             key: "repo".into(),
             label: "repo".into(),
             is_linked_worktree: linked,
+            checkout_name: None,
         });
     }
     projected
