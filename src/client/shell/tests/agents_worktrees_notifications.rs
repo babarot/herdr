@@ -1071,6 +1071,7 @@ fn worktree_create_previews_the_endpoint_owned_checkout_path() {
     assert!(text.contains("create and open"));
     assert!(frame.cursor.as_ref().is_some_and(|cursor| cursor.visible));
 
+    assert!(state.handle_input_bytes(b"\t").actions.is_empty());
     assert!(state
         .handle_input_bytes(b"feature/client-shell")
         .actions
@@ -1091,7 +1092,46 @@ fn worktree_create_previews_the_endpoint_owned_checkout_path() {
             if params.workspace_id.as_deref() == Some("ws_1")
                 && params.branch.as_deref() == Some("feature/client-shell")
                 && params.path.is_none()
+                && params.label.is_none()
                 && !params.focus
+    ));
+}
+
+#[test]
+fn worktree_create_name_labels_the_workspace_and_keeps_the_generated_branch() {
+    let mut state = ClientShellState::new(ClientShellConfig::from_config(&Config::default()));
+    state.set_snapshot(Box::new(snapshot()));
+    state.set_pane_surface(surface());
+    let mut prepare = ClientShellInput::default();
+    state.record_binding(
+        crate::input::KeybindMatch::Action(crate::input::KeybindAction::NewWorktree),
+        &mut prepare,
+    );
+    let [ClientShellAction::Endpoint { request, .. }] = &prepare.actions[..] else {
+        panic!("new worktree should prepare through worktree.list");
+    };
+    state.handle_endpoint_result("boot-1", &request.id, Ok(worktree_list_result(None)));
+    let Some(ClientShellOverlay::WorktreeCreate(create)) = &state.overlay else {
+        panic!("new worktree modal");
+    };
+    let generated = create.branch.as_str().to_owned();
+    let checkout_path = create.checkout_path.clone();
+
+    assert!(state.handle_input_bytes(b"  login fix ").actions.is_empty());
+    assert!(matches!(
+        &state.overlay,
+        Some(ClientShellOverlay::WorktreeCreate(create))
+            if create.branch.as_str() == generated && create.checkout_path == checkout_path
+    ));
+    let submit = state.handle_input_bytes(b"\r");
+    let [ClientShellAction::Endpoint { request, .. }] = &submit.actions[..] else {
+        panic!("worktree create should use endpoint API");
+    };
+    assert!(matches!(
+        &request.method,
+        crate::api::schema::Method::WorktreeCreate(params)
+            if params.branch.as_deref() == Some(generated.as_str())
+                && params.label.as_deref() == Some("login fix")
     ));
 }
 
@@ -1110,6 +1150,7 @@ fn unavailable_worktree_create_does_not_wedge_the_overlay() {
     };
     state.handle_endpoint_result("boot-1", &request.id, Ok(worktree_list_result(None)));
     state.set_endpoint_methods(Some(vec!["worktree.list".into()]));
+    state.handle_input_bytes(b"\t");
     state.handle_input_bytes(b"feature/unavailable");
 
     let submit = state.handle_input_bytes(b"\r");
