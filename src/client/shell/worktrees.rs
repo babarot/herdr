@@ -24,7 +24,9 @@ impl ClientShellState {
     pub(super) fn insert_worktree_overlay_text(&mut self, text: &str) -> bool {
         match self.overlay.as_mut() {
             Some(ClientShellOverlay::WorktreeCreate(create)) if !create.creating => {
-                if create.branch.insert(text) {
+                if create.label_focused {
+                    create.label.insert(text);
+                } else if create.branch.insert(text) {
                     self.sync_worktree_create_path();
                 }
                 true
@@ -60,7 +62,17 @@ impl ClientShellState {
                 if !creating {
                     if let Some(ClientShellOverlay::WorktreeCreate(create)) = self.overlay.as_mut()
                     {
-                        if let Some(content_changed) = create.branch.handle_key(key) {
+                        if matches!(code, KeyCode::Tab | KeyCode::BackTab) {
+                            create.label_focused = !create.label_focused;
+                            outcome.repaint = true;
+                            return true;
+                        }
+                        if create.label_focused {
+                            if create.label.handle_key(key).is_some() {
+                                outcome.repaint = true;
+                                return true;
+                            }
+                        } else if let Some(content_changed) = create.branch.handle_key(key) {
                             if content_changed {
                                 self.sync_worktree_create_path();
                             }
@@ -257,6 +269,8 @@ impl ClientShellState {
             return;
         }
         create.branch.trim_and_accept();
+        create.label.trim_and_accept();
+        let label = Some(create.label.as_str().to_owned()).filter(|label| !label.is_empty());
         create.checkout_path =
             checkout_path_preview(&worktree_directory, &create.repo_name, &branch);
         create.creating = true;
@@ -269,7 +283,7 @@ impl ClientShellState {
                 branch: Some(branch),
                 base: Some("HEAD".to_owned()),
                 path: None,
-                label: None,
+                label,
                 focus: false,
                 trust_repository: false,
             }),
@@ -392,6 +406,8 @@ impl ClientShellState {
                     ClientWorktreeCreateOverlay {
                         source_workspace_id: workspace_id,
                         repo_name: source.repo_name,
+                        label: TextEditor::new("", false),
+                        label_focused: true,
                         branch: TextEditor::new(&branch, true),
                         checkout_path,
                         error: None,

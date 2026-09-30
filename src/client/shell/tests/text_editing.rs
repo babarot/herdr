@@ -26,6 +26,8 @@ fn shell(field: usize) -> ClientShellState {
                 Ok(worktree_list_result(None)),
                 &mut ClientShellInput::default(),
             );
+            // The dialog opens on the name field; these cases edit the branch
+            state.handle_input_bytes(b"\t");
         }
         6 => {
             state.open_navigator_overlay();
