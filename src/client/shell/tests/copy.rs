@@ -522,6 +522,77 @@ fn keyboard_copy_mode_owns_cursor_selection_copy_and_scroll_restore() {
 }
 
 #[test]
+fn keyboard_copy_mode_o_swaps_cursor_and_selection_anchor() {
+    let mut state = ClientShellState::new(ClientShellConfig::from_config(&Config::default()));
+    state.config.copy_on_select = false;
+    state.set_snapshot(Box::new(snapshot()));
+    let mut pane_surface = surface();
+    pane_surface.panes[0].scroll = Some(crate::protocol::PaneSurfaceScrollMetrics {
+        offset_from_bottom: 0,
+        max_offset_from_bottom: 20,
+        viewport_rows: 2,
+    });
+    state.set_pane_surface(pane_surface);
+    state.compose(106, 20).expect("composed frame");
+
+    let mut enter = ClientShellInput::default();
+    state.record_binding(
+        crate::input::KeybindMatch::Action(crate::input::KeybindAction::CopyMode),
+        &mut enter,
+    );
+    let press = |state: &mut ClientShellState, ch: char| {
+        state.handle_raw_events(vec![RawInputEvent::Key(crate::input::TerminalKey::new(
+            KeyCode::Char(ch),
+            KeyModifiers::empty(),
+        ))]);
+    };
+    let point = |row, col| crate::api::schema::PaneTextPoint { row, col };
+    let cursor = |state: &ClientShellState| state.copy_mode.as_ref().map(|mode| mode.cursor);
+    let selection =
+        |state: &ClientShellState| state.copy_mode.as_ref().and_then(|mode| mode.selection);
+
+    let start = cursor(&state).expect("copy mode cursor");
+    let moved = point(start.row - 1, start.col + 2);
+
+    // Without a selection, o does nothing.
+    press(&mut state, 'o');
+    assert_eq!(cursor(&state), Some(start));
+
+    press(&mut state, 'v');
+    press(&mut state, 'l');
+    press(&mut state, 'l');
+    press(&mut state, 'k');
+    assert_eq!(cursor(&state), Some(moved));
+
+    press(&mut state, 'o');
+    assert_eq!(cursor(&state), Some(start));
+    assert!(matches!(
+        selection(&state),
+        Some(ClientCopySelection::Character { anchor }) if anchor == moved
+    ));
+    assert!(state
+        .selection
+        .as_ref()
+        .is_some_and(crate::selection::Selection::is_visible));
+
+    press(&mut state, 'o');
+    assert_eq!(cursor(&state), Some(moved));
+    assert!(matches!(
+        selection(&state),
+        Some(ClientCopySelection::Character { anchor }) if anchor == start
+    ));
+
+    press(&mut state, 'V');
+    press(&mut state, 'k');
+    press(&mut state, 'o');
+    assert_eq!(cursor(&state), Some(moved));
+    assert!(matches!(
+        selection(&state),
+        Some(ClientCopySelection::Linewise { anchor_row }) if anchor_row == moved.row - 1
+    ));
+}
+
+#[test]
 fn keyboard_selections_survive_output_and_copy_live_ranges() {
     // Character and linewise selections have distinct anchor/range projections.
     for selection_key in [b"v", b"V"] {

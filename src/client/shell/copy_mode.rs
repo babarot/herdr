@@ -211,6 +211,7 @@ impl ClientShellState {
             }
             'v' | ' ' => self.begin_copy_selection(false),
             'V' => self.begin_copy_selection(true),
+            'o' => self.swap_copy_selection_ends(outcome),
             'h' => self.move_copy_cursor(0, -1, outcome),
             'j' => self.move_copy_cursor(1, 0, outcome),
             'k' => self.move_copy_cursor(-1, 0, outcome),
@@ -665,6 +666,23 @@ impl ClientShellState {
                 (copy_mode.cursor.row, copy_mode.cursor.col),
             ));
         }
+    }
+
+    fn swap_copy_selection_ends(&mut self, outcome: &mut ClientShellInput) {
+        let Some(copy_mode) = self.copy_mode.as_mut() else {
+            return;
+        };
+        match copy_mode.selection.as_mut() {
+            Some(ClientCopySelection::Character { anchor }) => {
+                std::mem::swap(anchor, &mut copy_mode.cursor);
+            }
+            Some(ClientCopySelection::Linewise { anchor_row }) => {
+                std::mem::swap(anchor_row, &mut copy_mode.cursor.row);
+            }
+            None => return,
+        }
+        self.reveal_copy_cursor(outcome, false);
+        self.sync_copy_selection();
     }
 
     pub(super) fn sync_copy_selection(&mut self) {
