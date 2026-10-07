@@ -1053,6 +1053,14 @@ impl ClientShellState {
             KeybindAction::ClosePane => Some(Method::PaneClose(PaneTarget {
                 pane_id: focused_pane.clone()?,
             })),
+            KeybindAction::CyclePaneNext | KeybindAction::CyclePanePrevious
+                if self.focused_tab_zoomed() =>
+            {
+                Some(Method::PaneZoom(PaneZoomParams {
+                    pane_id: focused_pane,
+                    mode: PaneZoomMode::Off,
+                }))
+            }
             KeybindAction::CyclePaneNext | KeybindAction::CyclePanePrevious => {
                 let focused_tab = focused_tab?;
                 let panes = snapshot

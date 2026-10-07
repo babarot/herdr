@@ -493,6 +493,17 @@ impl ClientShellState {
             .is_none_or(|methods| methods.contains(crate::api::api_method_name(method)))
     }
 
+    /// Whether the focused tab shows one pane zoomed. Cycling panes there
+    /// unzooms instead, since the other panes are not on screen.
+    pub(super) fn focused_tab_zoomed(&self) -> bool {
+        let Some(snapshot) = self.snapshot.as_deref() else {
+            return false;
+        };
+        snapshot.tabs.iter().any(|tab| {
+            Some(tab.tab_id.as_str()) == snapshot.focused_tab_id.as_deref() && tab.zoomed
+        })
+    }
+
     pub(super) fn focused_tab_count(&self) -> usize {
         let Some(snapshot) = self.snapshot.as_deref() else {
             return 0;

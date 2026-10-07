@@ -468,6 +468,35 @@ fn pane_cycle_last_and_agent_actions_resolve_to_stable_pane_ids() {
 }
 
 #[test]
+fn pane_cycle_unzooms_a_zoomed_tab_instead_of_moving_focus() {
+    let mut initial = snapshot();
+    let mut second = initial.panes[0].clone();
+    second.pane_id = "pane_2".into();
+    second.focused = false;
+    initial.panes.push(second);
+    initial.tabs[0].zoomed = true;
+    let mut state = ClientShellState::new(ClientShellConfig::from_config(&Config::default()));
+    state.set_snapshot(Box::new(initial));
+
+    for action in [
+        crate::input::KeybindAction::CyclePaneNext,
+        crate::input::KeybindAction::CyclePanePrevious,
+    ] {
+        let mut cycle = ClientShellInput::default();
+        state.record_binding(crate::input::KeybindMatch::Action(action), &mut cycle);
+        let [ClientShellAction::Endpoint { request, .. }] = &cycle.actions[..] else {
+            panic!("pane cycle should use endpoint API");
+        };
+        assert!(matches!(
+            &request.method,
+            crate::api::schema::Method::PaneZoom(params)
+                if params.pane_id.as_deref() == Some("pane_1")
+                    && params.mode == crate::api::schema::PaneZoomMode::Off
+        ));
+    }
+}
+
+#[test]
 fn agent_sidebar_honors_priority_symbols_tokens_and_stable_hits() {
     let mut projected = snapshot();
     let mut second_pane = projected.panes[0].clone();
