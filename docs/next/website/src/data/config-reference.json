@@ -1115,6 +1115,12 @@
           "description": "Seconds to wait before sending finished or needs-input agent notifications. Herdr notifies only if the pane is still in the same state when the delay expires. 0 is instant; valid values are 0 through 3600."
         },
         {
+          "key": "ui.toast.duration_seconds",
+          "type": "integer",
+          "default": "unset",
+          "description": "Seconds an in-app toast stays visible. Unset keeps the built-in duration for each kind of notification. 0 keeps the toast until it is clicked; valid values are 0 through 3600."
+        },
+        {
           "key": "ui.toast.herdr.position",
           "type": "enum",
           "default": "\"bottom-right\"",

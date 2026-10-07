@@ -10,6 +10,7 @@ use super::{
 };
 
 pub const MAX_TOAST_DELAY_SECONDS: u64 = 3600;
+pub const MAX_TOAST_DURATION_SECONDS: u64 = 3600;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize, Serialize, Default)]
 #[serde(rename_all = "lowercase")]
@@ -199,6 +200,9 @@ fn parse_right_click_passthrough_modifier(value: &str) -> Option<Option<KeyModif
 pub struct ToastConfig {
     pub delivery: ToastDelivery,
     pub delay_seconds: u64,
+    /// Seconds an in-app toast stays visible. Unset keeps each kind's own
+    /// duration; 0 keeps the toast until it is clicked.
+    pub duration_seconds: Option<u64>,
     pub herdr: HerdrToastConfig,
     pub clipboard: ClipboardToastConfig,
 }
@@ -1248,6 +1252,7 @@ impl Default for ToastConfig {
         Self {
             delivery: ToastDelivery::Off,
             delay_seconds: 1,
+            duration_seconds: None,
             herdr: HerdrToastConfig::default(),
             clipboard: ClipboardToastConfig::default(),
         }
@@ -1282,6 +1287,7 @@ impl<'de> Deserialize<'de> for ToastConfig {
             delivery: Option<ToastDelivery>,
             enabled: Option<bool>,
             delay_seconds: Option<u64>,
+            duration_seconds: Option<u64>,
             herdr: HerdrToastConfig,
             clipboard: ClipboardToastConfig,
         }
@@ -1299,9 +1305,18 @@ impl<'de> Deserialize<'de> for ToastConfig {
                 "ui.toast.delay_seconds must be between 0 and {MAX_TOAST_DELAY_SECONDS}"
             )));
         }
+        if raw
+            .duration_seconds
+            .is_some_and(|duration| duration > MAX_TOAST_DURATION_SECONDS)
+        {
+            return Err(de::Error::custom(format!(
+                "ui.toast.duration_seconds must be between 0 and {MAX_TOAST_DURATION_SECONDS}"
+            )));
+        }
         Ok(Self {
             delivery,
             delay_seconds,
+            duration_seconds: raw.duration_seconds,
             herdr: raw.herdr,
             clipboard: raw.clipboard,
         })
@@ -1871,6 +1886,7 @@ mouse_scroll_lines = 0
 [ui.toast]
 delivery = "terminal"
 delay_seconds = 2
+duration_seconds = 0
 
 [ui.toast.herdr]
 position = "top-left"
@@ -1882,6 +1898,7 @@ position = "top-center"
         let config: Config = toml::from_str(toml).unwrap();
         assert_eq!(config.ui.toast.delivery, ToastDelivery::Terminal);
         assert_eq!(config.ui.toast.delay_seconds, 2);
+        assert_eq!(config.ui.toast.duration_seconds, Some(0));
         assert_eq!(config.ui.toast.herdr.position, ToastHerdrPosition::TopLeft);
         assert!(!config.ui.toast.clipboard.enabled);
         assert_eq!(
@@ -1895,6 +1912,7 @@ position = "top-center"
         let config = Config::default();
         assert_eq!(config.ui.toast.delivery, ToastDelivery::Off);
         assert_eq!(config.ui.toast.delay_seconds, 1);
+        assert_eq!(config.ui.toast.duration_seconds, None);
         assert_eq!(
             config.ui.toast.herdr.position,
             ToastHerdrPosition::BottomRight
@@ -1960,6 +1978,21 @@ delay_seconds = {}
         let error = toml::from_str::<Config>(&toml).unwrap_err().to_string();
 
         assert!(error.contains("ui.toast.delay_seconds must be between 0 and 3600"));
+    }
+
+    #[test]
+    fn toast_config_rejects_unbounded_duration() {
+        let toml = format!(
+            r#"
+[ui.toast]
+duration_seconds = {}
+"#,
+            MAX_TOAST_DURATION_SECONDS + 1
+        );
+
+        let error = toml::from_str::<Config>(&toml).unwrap_err().to_string();
+
+        assert!(error.contains("ui.toast.duration_seconds must be between 0 and 3600"));
     }
 
     #[test]

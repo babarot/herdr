@@ -368,6 +368,8 @@ const DEFAULT_CONFIG: &str = r##"# herdr configuration
 # system = ask the OS notification service directly
 # delivery = "off"
 # delay_seconds = 1
+# Seconds an in-app toast stays visible; unset keeps each kind's own, 0 keeps it until clicked
+# duration_seconds = 5
 
 [ui.toast.herdr]
 # position = "bottom-right"

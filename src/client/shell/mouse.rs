@@ -977,10 +977,7 @@ impl ClientShellState {
         }
         if self.overlay.is_none()
             && self.mode == ClientShellMode::Terminal
-            && self
-                .visible_notification
-                .as_ref()
-                .is_some_and(|notification| notification.event.pane_id.is_some())
+            && self.visible_notification.is_some()
             && mouse.kind == MouseEventKind::Down(MouseButton::Left)
             && super::contains(self.hits.notification_toast, point)
         {

@@ -223,7 +223,7 @@ mod tests {
                 pane_id: None,
                 position: None,
             },
-            deadline: std::time::Instant::now(),
+            deadline: None,
         }
     }
 
@@ -270,7 +270,7 @@ mod tests {
                 pane_id: Some("pane".into()),
                 position: None,
             },
-            deadline: std::time::Instant::now() + std::time::Duration::from_secs(5),
+            deadline: Some(std::time::Instant::now() + std::time::Duration::from_secs(5)),
         });
         let mut outcome = ClientShellInput::default();
 
@@ -451,6 +451,77 @@ mod tests {
             Some("second")
         );
         assert!(state.queued_notifications.is_empty());
+    }
+
+    fn custom_notification(title: &str, pane_id: Option<&str>) -> SemanticNotification {
+        SemanticNotification {
+            kind: SemanticNotificationKind::Custom,
+            title: title.into(),
+            body: None,
+            sound: None,
+            agent: None,
+            workspace_id: None,
+            tab_id: None,
+            pane_id: pane_id.map(Into::into),
+            position: None,
+        }
+    }
+
+    fn herdr_toast_state(duration_seconds: Option<u64>) -> ClientShellState {
+        let mut config = Config::default();
+        config.ui.toast.delivery = crate::config::ToastDelivery::Herdr;
+        config.ui.toast.duration_seconds = duration_seconds;
+        ClientShellState::new(ClientShellConfig::from_config(&config))
+    }
+
+    #[test]
+    fn unset_toast_duration_keeps_each_kind_its_own_duration() {
+        let mut state = herdr_toast_state(None);
+        let now = std::time::Instant::now();
+        state.receive_notification(
+            &ClientEndpointId::Local,
+            custom_notification("custom", None),
+            now,
+        );
+
+        state.tick_notifications(now + std::time::Duration::from_millis(4999));
+        assert!(state.visible_notification.is_some());
+        state.tick_notifications(now + std::time::Duration::from_secs(5));
+        assert!(state.visible_notification.is_none());
+    }
+
+    #[test]
+    fn configured_toast_duration_applies_to_every_kind() {
+        let mut state = herdr_toast_state(Some(2));
+        let now = std::time::Instant::now();
+        state.receive_notification(
+            &ClientEndpointId::Local,
+            custom_notification("custom", None),
+            now,
+        );
+
+        state.tick_notifications(now + std::time::Duration::from_millis(1999));
+        assert!(state.visible_notification.is_some());
+        state.tick_notifications(now + std::time::Duration::from_secs(2));
+        assert!(state.visible_notification.is_none());
+    }
+
+    #[test]
+    fn zero_toast_duration_keeps_the_toast_until_it_is_closed() {
+        let mut state = herdr_toast_state(Some(0));
+        let now = std::time::Instant::now();
+        state.receive_notification(
+            &ClientEndpointId::Local,
+            custom_notification("custom", None),
+            now,
+        );
+
+        state.tick_notifications(now + std::time::Duration::from_secs(24 * 60 * 60));
+        assert!(state.visible_notification.is_some());
+
+        let mut outcome = ClientShellInput::default();
+        state.focus_visible_notification(&mut outcome);
+        assert!(state.visible_notification.is_none());
     }
 
     #[test]

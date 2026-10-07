@@ -12,13 +12,18 @@ enum NotificationValidation {
     Stale,
 }
 
-fn notification_duration(kind: SemanticNotificationKind) -> std::time::Duration {
-    std::time::Duration::from_secs(match kind {
+/// None keeps the toast until it is clicked.
+fn notification_duration(
+    kind: SemanticNotificationKind,
+    configured_seconds: Option<u64>,
+) -> Option<std::time::Duration> {
+    let seconds = configured_seconds.unwrap_or(match kind {
         SemanticNotificationKind::NeedsAttention => 8,
         SemanticNotificationKind::Finished => 5,
         SemanticNotificationKind::UpdateInstalled => 3,
         SemanticNotificationKind::Custom => 5,
-    })
+    });
+    (seconds > 0).then(|| std::time::Duration::from_secs(seconds))
 }
 
 impl ClientShellState {
@@ -43,7 +48,7 @@ impl ClientShellState {
         now: std::time::Instant,
     ) {
         if self.visible_notification.is_none() {
-            notification.deadline = now + notification_duration(notification.event.kind);
+            notification.deadline = self.notification_deadline(notification.event.kind, now);
             self.visible_notification = Some(notification);
             return;
         }
@@ -57,9 +62,18 @@ impl ClientShellState {
         let Some(mut notification) = self.queued_notifications.pop_front() else {
             return false;
         };
-        notification.deadline = now + notification_duration(notification.event.kind);
+        notification.deadline = self.notification_deadline(notification.event.kind, now);
         self.visible_notification = Some(notification);
         true
+    }
+
+    fn notification_deadline(
+        &self,
+        kind: SemanticNotificationKind,
+        now: std::time::Instant,
+    ) -> Option<std::time::Instant> {
+        notification_duration(kind, self.config.toast_duration_seconds)
+            .and_then(|duration| now.checked_add(duration))
     }
 
     pub(super) fn focus_visible_notification(&mut self, outcome: &mut ClientShellInput) {
@@ -152,7 +166,8 @@ impl ClientShellState {
         if self
             .visible_notification
             .as_ref()
-            .is_some_and(|visible| now >= visible.deadline)
+            .and_then(|visible| visible.deadline)
+            .is_some_and(|deadline| now >= deadline)
         {
             self.visible_notification = None;
             self.promote_queued_notification(now);
@@ -215,7 +230,7 @@ impl ClientShellState {
                         ClientVisibleNotification {
                             endpoint_id: pending.endpoint_id,
                             event: pending.event,
-                            deadline: now,
+                            deadline: None,
                         },
                         now,
                     );

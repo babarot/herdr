@@ -553,20 +553,12 @@ fn config_diagnostic_offsets_only_the_pane_rows_it_overlaps() {
             pane_id: None,
             position: Some(crate::config::ToastHerdrPosition::TopRight),
         },
-        deadline: std::time::Instant::now(),
+        deadline: None,
     });
 
     state.compose(106, 20).expect("one-line frame");
     let pane_area = state.layout(106, 20).pane_surface;
     assert_eq!(state.hits.notification_toast.y, pane_area.y);
-    let targetless_hit = state.hits.notification_toast;
-    state.handle_raw_events(vec![RawInputEvent::Mouse(crossterm::event::MouseEvent {
-        kind: MouseEventKind::Down(MouseButton::Left),
-        column: targetless_hit.x,
-        row: targetless_hit.y,
-        modifiers: KeyModifiers::empty(),
-    })]);
-    assert!(state.visible_notification.is_some());
 
     let mut endpoint_snapshot = snapshot();
     endpoint_snapshot.config_diagnostic = Some("first warning\nsecond warning".into());
@@ -582,6 +574,17 @@ fn config_diagnostic_offsets_only_the_pane_rows_it_overlaps() {
         .position = Some(crate::config::ToastHerdrPosition::BottomRight);
     state.compose(106, 20).expect("bottom notification frame");
     assert_eq!(state.hits.notification_toast.bottom(), 19);
+
+    // A toast without a target pane closes on click: with
+    // ui.toast.duration_seconds = 0 that is the only way to close it.
+    let targetless_hit = state.hits.notification_toast;
+    state.handle_raw_events(vec![RawInputEvent::Mouse(crossterm::event::MouseEvent {
+        kind: MouseEventKind::Down(MouseButton::Left),
+        column: targetless_hit.x,
+        row: targetless_hit.y,
+        modifiers: KeyModifiers::empty(),
+    })]);
+    assert!(state.visible_notification.is_none());
 }
 
 #[test]
