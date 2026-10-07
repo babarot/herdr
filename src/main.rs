@@ -370,6 +370,8 @@ const DEFAULT_CONFIG: &str = r##"# herdr configuration
 # delay_seconds = 1
 # Seconds an in-app toast stays visible; unset keeps each kind's own, 0 keeps it until clicked
 # duration_seconds = 5
+# Close a space's toasts once that space is opened, however long they would stay
+# dismiss_on_read = false
 
 [ui.toast.herdr]
 # position = "bottom-right"

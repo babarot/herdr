@@ -1121,6 +1121,12 @@
           "description": "Seconds an in-app toast stays visible. Unset keeps the built-in duration for each kind of notification. 0 keeps the toast until it is clicked; valid values are 0 through 3600."
         },
         {
+          "key": "ui.toast.dismiss_on_read",
+          "type": "boolean",
+          "default": "false",
+          "description": "Close a space's in-app toasts once that space is opened, from the sidebar or by keyboard, whatever ui.toast.duration_seconds says. A linked worktree is its own space, so opening it closes only its own toasts."
+        },
+        {
           "key": "ui.toast.herdr.position",
           "type": "enum",
           "default": "\"bottom-right\"",

@@ -35,6 +35,35 @@ impl ClientShellState {
             .retain(|visible| &visible.endpoint_id != endpoint_id);
     }
 
+    /// With ui.toast.dismiss_on_read, closes the toasts of the active
+    /// endpoint's focused space once it is opened while the outer terminal
+    /// has focus, the way its agents are read. A space stays opened until
+    /// another one is, so a toast that later arrives from another tab of the
+    /// same space stays up.
+    pub(super) fn dismiss_read_space_notifications(&mut self) -> bool {
+        if !self.config.toast_dismiss_on_read || self.outer_focused == Some(false) {
+            return false;
+        }
+        let Some(workspace_id) = self
+            .snapshot
+            .as_deref()
+            .and_then(|snapshot| snapshot.focused_workspace_id.clone())
+        else {
+            return false;
+        };
+        let opened = (self.active_endpoint_id.clone(), workspace_id);
+        if self.read_space.as_ref() == Some(&opened) {
+            return false;
+        }
+        let shown = self.visible_notifications.len();
+        self.visible_notifications.retain(|visible| {
+            visible.endpoint_id != opened.0
+                || visible.event.workspace_id.as_deref() != Some(opened.1.as_str())
+        });
+        self.read_space = Some(opened);
+        self.visible_notifications.len() != shown
+    }
+
     /// Shows a toast at once, stacked on the ones already visible, each
     /// counting its own duration from when it appears.
     fn show_notification(

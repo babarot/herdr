@@ -246,6 +246,7 @@ impl ClientShellState {
                     if let Some(surface) = self.pane_surface.clone() {
                         outcome.repaint |= self.acknowledge_active_surface_agents(&surface);
                     }
+                    outcome.repaint |= self.dismiss_read_space_notifications();
                     outcome
                         .requests
                         .push(ClientMessage::ClientShellFocus { focused: true });

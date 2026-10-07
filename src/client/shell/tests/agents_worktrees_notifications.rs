@@ -1636,3 +1636,83 @@ fn clicking_one_stacked_notification_closes_only_that_one() {
     assert_eq!(rects[0], newest);
     assert_eq!(rects[1].y, middle.y);
 }
+
+#[test]
+fn opening_a_space_closes_only_that_spaces_notifications() {
+    fn space_notification(title: &str, workspace_id: &str, tab_id: &str) -> SemanticNotification {
+        SemanticNotification {
+            kind: SemanticNotificationKind::Custom,
+            title: title.into(),
+            body: None,
+            sound: None,
+            agent: None,
+            workspace_id: Some(workspace_id.into()),
+            tab_id: Some(tab_id.into()),
+            pane_id: Some(format!("{title}_pane")),
+            position: None,
+        }
+    }
+    fn visible_titles(state: &ClientShellState) -> Vec<&str> {
+        state
+            .visible_notifications
+            .iter()
+            .map(|notification| notification.event.title.as_str())
+            .collect()
+    }
+    fn focus_space(state: &mut ClientShellState, workspace_id: &str) {
+        let mut next = snapshot();
+        next.revision = state
+            .snapshot
+            .as_ref()
+            .map_or(0, |current| current.revision)
+            + 1;
+        next.focused_workspace_id = Some(workspace_id.into());
+        state.set_snapshot(Box::new(next));
+    }
+
+    for dismiss_on_read in [false, true] {
+        let mut config = ClientShellConfig::from_config(&Config::default());
+        config.toast_delivery = crate::config::ToastDelivery::Herdr;
+        config.toast_duration_seconds = Some(0);
+        config.toast_dismiss_on_read = dismiss_on_read;
+        let mut state = ClientShellState::new(config);
+        state.set_snapshot(Box::new(snapshot()));
+        let now = std::time::Instant::now();
+        for (title, workspace_id, tab_id) in [
+            ("worktree a", "ws_2", "tab_2"),
+            ("worktree a other tab", "ws_2", "tab_3"),
+            ("worktree b", "ws_3", "tab_4"),
+        ] {
+            state.receive_notification(
+                &ClientEndpointId::Local,
+                space_notification(title, workspace_id, tab_id),
+                now,
+            );
+        }
+
+        focus_space(&mut state, "ws_2");
+        if !dismiss_on_read {
+            assert_eq!(visible_titles(&state).len(), 3);
+            continue;
+        }
+        assert_eq!(visible_titles(&state), vec!["worktree b"]);
+
+        // A toast from another tab of the space already open stays up.
+        state.receive_notification(
+            &ClientEndpointId::Local,
+            space_notification("later", "ws_2", "tab_3"),
+            now,
+        );
+        focus_space(&mut state, "ws_2");
+        assert_eq!(visible_titles(&state), vec!["worktree b", "later"]);
+
+        // Opened while the terminal is in the background, nothing is read
+        // until it comes back to the front.
+        state.handle_raw_events(vec![RawInputEvent::OuterFocusLost]);
+        focus_space(&mut state, "ws_3");
+        assert_eq!(visible_titles(&state), vec!["worktree b", "later"]);
+        let outcome = state.handle_raw_events(vec![RawInputEvent::OuterFocusGained]);
+        assert!(outcome.repaint);
+        assert_eq!(visible_titles(&state), vec!["later"]);
+    }
+}

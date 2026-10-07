@@ -129,6 +129,7 @@ impl ClientShellConfig {
             toast_delivery: config.ui.toast.delivery,
             toast_delay_seconds: config.ui.toast.delay_seconds,
             toast_duration_seconds: config.ui.toast.duration_seconds,
+            toast_dismiss_on_read: config.ui.toast.dismiss_on_read,
             toast_position: config.ui.toast.herdr.position,
             copy_on_select: config.ui.copy_on_select,
             clipboard_toast_enabled: config.ui.toast.clipboard.enabled,
@@ -332,6 +333,7 @@ impl ClientShellConfig {
                 self.toast_delivery = ui.toast.delivery;
                 self.toast_delay_seconds = ui.toast.delay_seconds;
                 self.toast_duration_seconds = ui.toast.duration_seconds;
+                self.toast_dismiss_on_read = ui.toast.dismiss_on_read;
                 self.toast_position = ui.toast.herdr.position;
                 self.copy_on_select = ui.copy_on_select;
                 self.clipboard_toast_enabled = ui.toast.clipboard.enabled;

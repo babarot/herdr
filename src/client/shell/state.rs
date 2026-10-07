@@ -29,6 +29,7 @@ pub(crate) struct ClientShellConfig {
     pub(super) toast_delivery: crate::config::ToastDelivery,
     pub(super) toast_delay_seconds: u64,
     pub(super) toast_duration_seconds: Option<u64>,
+    pub(super) toast_dismiss_on_read: bool,
     pub(super) toast_position: crate::config::ToastHerdrPosition,
     pub(super) copy_on_select: bool,
     pub(super) clipboard_toast_enabled: bool,
@@ -935,6 +936,9 @@ pub(crate) struct ClientShellState {
     pub(super) pending_notifications: Vec<ClientPendingNotification>,
     /// Toasts on screen, oldest first.
     pub(super) visible_notifications: Vec<ClientVisibleNotification>,
+    /// The endpoint and space last opened while the outer terminal had
+    /// focus; opening another closes that space's toasts.
+    pub(super) read_space: Option<(ClientEndpointId, String)>,
     pub(super) endpoint_notice_seen: HashSet<ClientEndpointNoticeKey>,
     pub(super) visible_endpoint_notice: Option<ClientVisibleEndpointNotice>,
     pub(super) outer_focused: Option<bool>,
@@ -1099,6 +1103,7 @@ impl ClientShellState {
             pending_integration_installs: 0,
             pending_notifications: Vec::new(),
             visible_notifications: Vec::new(),
+            read_space: None,
             endpoint_notice_seen: HashSet::new(),
             visible_endpoint_notice: None,
             outer_focused: None,
@@ -1572,6 +1577,7 @@ impl ClientShellState {
         }
         self.snapshot = Some(snapshot);
         self.reconcile_pending_workspace_highlight();
+        self.dismiss_read_space_notifications();
         let pending_surface = self.pending_pane_surface.take();
         if let Some(surface) = pending_surface {
             let matching = self.snapshot.as_ref().is_some_and(|snapshot| {

@@ -203,6 +203,9 @@ pub struct ToastConfig {
     /// Seconds an in-app toast stays visible. Unset keeps each kind's own
     /// duration; 0 keeps the toast until it is clicked.
     pub duration_seconds: Option<u64>,
+    /// Closes a space's in-app toasts once that space is opened, however
+    /// long they would otherwise stay.
+    pub dismiss_on_read: bool,
     pub herdr: HerdrToastConfig,
     pub clipboard: ClipboardToastConfig,
 }
@@ -1253,6 +1256,7 @@ impl Default for ToastConfig {
             delivery: ToastDelivery::Off,
             delay_seconds: 1,
             duration_seconds: None,
+            dismiss_on_read: false,
             herdr: HerdrToastConfig::default(),
             clipboard: ClipboardToastConfig::default(),
         }
@@ -1288,6 +1292,7 @@ impl<'de> Deserialize<'de> for ToastConfig {
             enabled: Option<bool>,
             delay_seconds: Option<u64>,
             duration_seconds: Option<u64>,
+            dismiss_on_read: bool,
             herdr: HerdrToastConfig,
             clipboard: ClipboardToastConfig,
         }
@@ -1317,6 +1322,7 @@ impl<'de> Deserialize<'de> for ToastConfig {
             delivery,
             delay_seconds,
             duration_seconds: raw.duration_seconds,
+            dismiss_on_read: raw.dismiss_on_read,
             herdr: raw.herdr,
             clipboard: raw.clipboard,
         })
@@ -1887,6 +1893,7 @@ mouse_scroll_lines = 0
 delivery = "terminal"
 delay_seconds = 2
 duration_seconds = 0
+dismiss_on_read = true
 
 [ui.toast.herdr]
 position = "top-left"
@@ -1899,6 +1906,7 @@ position = "top-center"
         assert_eq!(config.ui.toast.delivery, ToastDelivery::Terminal);
         assert_eq!(config.ui.toast.delay_seconds, 2);
         assert_eq!(config.ui.toast.duration_seconds, Some(0));
+        assert!(config.ui.toast.dismiss_on_read);
         assert_eq!(config.ui.toast.herdr.position, ToastHerdrPosition::TopLeft);
         assert!(!config.ui.toast.clipboard.enabled);
         assert_eq!(
@@ -1913,6 +1921,7 @@ position = "top-center"
         assert_eq!(config.ui.toast.delivery, ToastDelivery::Off);
         assert_eq!(config.ui.toast.delay_seconds, 1);
         assert_eq!(config.ui.toast.duration_seconds, None);
+        assert!(!config.ui.toast.dismiss_on_read);
         assert_eq!(
             config.ui.toast.herdr.position,
             ToastHerdrPosition::BottomRight
