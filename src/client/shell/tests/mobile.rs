@@ -29,7 +29,7 @@ fn navigate_update_status_uses_released_desktop_and_mobile_placement() {
     assert!(state.hits.tab_scroll_right.is_empty());
 
     state.config.tab_bar_position = crate::config::TabBarPositionConfig::Top;
-    state.visible_notification = Some(ClientVisibleNotification {
+    state.visible_notifications = vec![ClientVisibleNotification {
         endpoint_id: ClientEndpointId::Local,
         event: SemanticNotification {
             kind: SemanticNotificationKind::Custom,
@@ -43,7 +43,7 @@ fn navigate_update_status_uses_released_desktop_and_mobile_placement() {
             position: Some(crate::config::ToastHerdrPosition::BottomRight),
         },
         deadline: None,
-    });
+    }];
     let top = state.compose(106, 30).expect("top-tab update shell");
     assert!(row_text(&top, 29).contains("update ready"));
 

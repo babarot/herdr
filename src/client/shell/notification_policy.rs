@@ -1,6 +1,7 @@
 use super::*;
 
-const MAX_QUEUED_NOTIFICATIONS: usize = 8;
+/// Toasts shown at once; a new one past this closes the oldest.
+pub(super) const MAX_VISIBLE_NOTIFICATIONS: usize = 5;
 const COMPLETION_EVIDENCE_GRACE: std::time::Duration = std::time::Duration::from_secs(1);
 pub(super) const COMPLETION_RECHECK_INTERVAL: std::time::Duration =
     std::time::Duration::from_millis(50);
@@ -30,41 +31,22 @@ impl ClientShellState {
     pub(super) fn retire_endpoint_notifications(&mut self, endpoint_id: &ClientEndpointId) {
         self.pending_notifications
             .retain(|pending| &pending.endpoint_id != endpoint_id);
-        self.queued_notifications
-            .retain(|queued| &queued.endpoint_id != endpoint_id);
-        if self
-            .visible_notification
-            .as_ref()
-            .is_some_and(|visible| &visible.endpoint_id == endpoint_id)
-        {
-            self.visible_notification = None;
-            self.promote_queued_notification(std::time::Instant::now());
-        }
+        self.visible_notifications
+            .retain(|visible| &visible.endpoint_id != endpoint_id);
     }
 
-    fn queue_visible_notification(
+    /// Shows a toast at once, stacked on the ones already visible, each
+    /// counting its own duration from when it appears.
+    fn show_notification(
         &mut self,
         mut notification: ClientVisibleNotification,
         now: std::time::Instant,
     ) {
-        if self.visible_notification.is_none() {
-            notification.deadline = self.notification_deadline(notification.event.kind, now);
-            self.visible_notification = Some(notification);
-            return;
-        }
-        if self.queued_notifications.len() == MAX_QUEUED_NOTIFICATIONS {
-            self.queued_notifications.pop_front();
-        }
-        self.queued_notifications.push_back(notification);
-    }
-
-    fn promote_queued_notification(&mut self, now: std::time::Instant) -> bool {
-        let Some(mut notification) = self.queued_notifications.pop_front() else {
-            return false;
-        };
         notification.deadline = self.notification_deadline(notification.event.kind, now);
-        self.visible_notification = Some(notification);
-        true
+        if self.visible_notifications.len() == MAX_VISIBLE_NOTIFICATIONS {
+            self.visible_notifications.remove(0);
+        }
+        self.visible_notifications.push(notification);
     }
 
     fn notification_deadline(
@@ -76,8 +58,21 @@ impl ClientShellState {
             .and_then(|duration| now.checked_add(duration))
     }
 
+    /// Opens the newest toast.
     pub(super) fn focus_visible_notification(&mut self, outcome: &mut ClientShellInput) {
-        let Some(notification) = self.visible_notification.as_ref() else {
+        if let Some(index) = self.visible_notifications.len().checked_sub(1) {
+            self.focus_visible_notification_at(index, outcome);
+        }
+    }
+
+    /// Closes the toast at `index` in `visible_notifications` and focuses its
+    /// pane, if it has one; the other toasts stay.
+    pub(super) fn focus_visible_notification_at(
+        &mut self,
+        index: usize,
+        outcome: &mut ClientShellInput,
+    ) {
+        let Some(notification) = self.visible_notifications.get(index) else {
             return;
         };
         if notification.event.pane_id.is_some()
@@ -88,11 +83,7 @@ impl ClientShellState {
             outcome.repaint = true;
             return;
         }
-        let notification = self
-            .visible_notification
-            .take()
-            .expect("checked visible notification");
-        self.promote_queued_notification(std::time::Instant::now());
+        let notification = self.visible_notifications.remove(index);
         outcome.repaint = true;
         let Some(pane_id) = notification.event.pane_id else {
             return;
@@ -124,25 +115,18 @@ impl ClientShellState {
         let deadline = now
             .checked_add(std::time::Duration::from_secs(delay))
             .unwrap_or(now);
-        let cleared_visible = event.pane_id.as_deref().is_some_and(|pane_id| {
-            self.visible_notification.as_ref().is_some_and(|visible| {
-                visible.endpoint_id == *endpoint_id
-                    && visible.event.pane_id.as_deref() == Some(pane_id)
-            })
-        });
+        let mut cleared_visible = false;
         if let Some(pane_id) = event.pane_id.as_deref() {
             self.pending_notifications.retain(|pending| {
                 pending.endpoint_id != *endpoint_id
                     || pending.event.pane_id.as_deref() != Some(pane_id)
             });
-            self.queued_notifications.retain(|queued| {
-                queued.endpoint_id != *endpoint_id
-                    || queued.event.pane_id.as_deref() != Some(pane_id)
+            let shown = self.visible_notifications.len();
+            self.visible_notifications.retain(|visible| {
+                visible.endpoint_id != *endpoint_id
+                    || visible.event.pane_id.as_deref() != Some(pane_id)
             });
-            if cleared_visible {
-                self.visible_notification = None;
-                self.promote_queued_notification(now);
-            }
+            cleared_visible = self.visible_notifications.len() != shown;
         }
         // Completion evidence is advisory. A Finished effect is valid only while the
         // client-projected pane remains Done, even when delivery is immediate.
@@ -162,17 +146,10 @@ impl ClientShellState {
         &mut self,
         now: std::time::Instant,
     ) -> (Vec<ClientShellNotificationEffect>, bool) {
-        let mut repaint = false;
-        if self
-            .visible_notification
-            .as_ref()
-            .and_then(|visible| visible.deadline)
-            .is_some_and(|deadline| now >= deadline)
-        {
-            self.visible_notification = None;
-            self.promote_queued_notification(now);
-            repaint = true;
-        }
+        let shown = self.visible_notifications.len();
+        self.visible_notifications
+            .retain(|visible| visible.deadline.is_none_or(|deadline| now < deadline));
+        let mut repaint = self.visible_notifications.len() != shown;
         if self
             .visible_endpoint_notice
             .as_ref()
@@ -226,7 +203,7 @@ impl ClientShellState {
             match self.config.toast_delivery {
                 crate::config::ToastDelivery::Off => {}
                 crate::config::ToastDelivery::Herdr if !target_active => {
-                    self.queue_visible_notification(
+                    self.show_notification(
                         ClientVisibleNotification {
                             endpoint_id: pending.endpoint_id,
                             event: pending.event,

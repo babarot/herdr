@@ -452,6 +452,7 @@ impl ClientShellState {
         }
         restore_mode_bar(&mut frame, mode_bar, mode_bar_cells.as_deref());
         self.hits.notification_toast = Rect::default();
+        self.hits.notification_toasts.clear();
         let has_config_diagnostic = self.config_diagnostic.is_some();
         let active_lifecycle = self
             .endpoints
@@ -462,7 +463,7 @@ impl ClientShellState {
         if has_config_diagnostic
             || active_lifecycle.is_some()
             || self.visible_endpoint_notice.is_some()
-            || self.visible_notification.is_some()
+            || !self.visible_notifications.is_empty()
         {
             let cursor = frame.cursor.clone();
             let mut composed = frame.to_ratatui_buffer()?;
@@ -509,27 +510,39 @@ impl ClientShellState {
                         &self.config.palette,
                     )
                 };
-            } else if let Some(notification) = self.visible_notification.as_ref() {
-                self.hits.notification_toast = if layout.mobile_header.is_empty() {
-                    notifications::render_visible_notification(
+            } else if let Some(newest) = self.visible_notifications.len().checked_sub(1) {
+                self.hits.notification_toasts = if layout.mobile_header.is_empty() {
+                    notifications::render_visible_notifications(
                         &mut composed,
                         Rect::new(0, 0, cols, rows),
-                        notification,
+                        &self.visible_notifications,
                         self.config.toast_position,
                         u16::from(has_config_diagnostic) + lifecycle_offset,
                         &self.config.palette,
                     )
                 } else {
-                    notifications::render_mobile_notification_banner(
-                        &mut composed,
-                        Rect::new(0, 0, cols, rows),
-                        notification,
-                        has_config_diagnostic || lifecycle_offset > 0,
-                        &self.config.palette,
-                    )
+                    // The mobile banner is one row wide; it shows the newest only.
+                    vec![(
+                        notifications::render_mobile_notification_banner(
+                            &mut composed,
+                            Rect::new(0, 0, cols, rows),
+                            &self.visible_notifications[newest],
+                            has_config_diagnostic || lifecycle_offset > 0,
+                            &self.config.palette,
+                        ),
+                        newest,
+                    )]
                 };
+                self.hits.notification_toast = self
+                    .hits
+                    .notification_toasts
+                    .first()
+                    .map_or_else(Rect::default, |(rect, _)| *rect);
             }
             occlusion.cover(self.hits.notification_toast);
+            for (rect, _) in &self.hits.notification_toasts {
+                occlusion.cover(*rect);
+            }
             frame.replace_from_ratatui_buffer_preserving_effects(&composed, cursor);
         }
         if let Some(feedback) = self.copy_feedback.as_ref() {
@@ -541,13 +554,26 @@ impl ClientShellState {
             } else {
                 Rect::new(0, 0, cols, rows)
             };
-            let offset = crate::ui::copy_feedback_offset_for_toast(
-                feedback_area,
-                feedback,
-                base_offset,
-                self.config.clipboard_toast_position,
-                self.hits.notification_toast,
-            );
+            let toast_rects = if self.hits.notification_toasts.is_empty() {
+                vec![self.hits.notification_toast]
+            } else {
+                self.hits
+                    .notification_toasts
+                    .iter()
+                    .map(|(rect, _)| *rect)
+                    .collect()
+            };
+            // Stacked toasts are nearest their edge first, so each one the
+            // feedback would overlap moves it past that toast in turn.
+            let offset = toast_rects.into_iter().fold(base_offset, |offset, rect| {
+                crate::ui::copy_feedback_offset_for_toast(
+                    feedback_area,
+                    feedback,
+                    offset,
+                    self.config.clipboard_toast_position,
+                    rect,
+                )
+            });
             occlusion.cover(crate::ui::render_copy_feedback_buffer(
                 &mut composed,
                 feedback_area,

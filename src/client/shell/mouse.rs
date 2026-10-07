@@ -977,12 +977,18 @@ impl ClientShellState {
         }
         if self.overlay.is_none()
             && self.mode == ClientShellMode::Terminal
-            && self.visible_notification.is_some()
             && mouse.kind == MouseEventKind::Down(MouseButton::Left)
-            && super::contains(self.hits.notification_toast, point)
         {
-            self.focus_visible_notification(outcome);
-            return;
+            if let Some(index) = self
+                .hits
+                .notification_toasts
+                .iter()
+                .find(|(rect, _)| super::contains(*rect, point))
+                .map(|(_, index)| *index)
+            {
+                self.focus_visible_notification_at(index, outcome);
+                return;
+            }
         }
         if self.handle_mobile_mouse(mouse, outcome) {
             return;

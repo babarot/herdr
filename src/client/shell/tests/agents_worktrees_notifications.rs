@@ -1460,7 +1460,7 @@ fn semantic_notifications_use_client_policy_and_stable_navigation_targets() {
     state.mode = ClientShellMode::Navigate;
     let ignored = state.handle_raw_events(vec![click()]);
     assert!(ignored.actions.is_empty());
-    assert!(state.visible_notification.is_some());
+    assert!(!state.visible_notifications.is_empty());
 
     state.mode = ClientShellMode::Terminal;
     let outcome = state.handle_raw_events(vec![click()]);
@@ -1473,7 +1473,7 @@ fn semantic_notifications_use_client_policy_and_stable_navigation_targets() {
                     if params.pane_id == "pane_2"
             )
     )));
-    assert!(state.visible_notification.is_none());
+    assert!(state.visible_notifications.is_empty());
 
     state.receive_notification(
         &ClientEndpointId::Local,
@@ -1504,7 +1504,7 @@ fn semantic_notifications_use_client_policy_and_stable_navigation_targets() {
                     if params.pane_id == "pane_2"
             )
     )));
-    assert!(state.visible_notification.is_none());
+    assert!(state.visible_notifications.is_empty());
 
     state.receive_notification(
         &ClientEndpointId::Local,
@@ -1521,7 +1521,7 @@ fn semantic_notifications_use_client_policy_and_stable_navigation_targets() {
         },
         now,
     );
-    assert!(state.visible_notification.is_some());
+    assert!(!state.visible_notifications.is_empty());
     state.config.toast_delay_seconds = 1;
     let (_, repaint) = state.receive_notification(
         &ClientEndpointId::Local,
@@ -1539,6 +1539,71 @@ fn semantic_notifications_use_client_policy_and_stable_navigation_targets() {
         now,
     );
     assert!(repaint);
-    assert!(state.visible_notification.is_none());
+    assert!(state.visible_notifications.is_empty());
     assert_eq!(state.pending_notifications.len(), 1);
+}
+
+#[test]
+fn clicking_one_stacked_notification_closes_only_that_one() {
+    let mut config = ClientShellConfig::from_config(&Config::default());
+    config.toast_delivery = crate::config::ToastDelivery::Herdr;
+    config.toast_duration_seconds = Some(0);
+    let mut state = ClientShellState::new(config);
+    state.set_snapshot(Box::new(snapshot()));
+    state.set_pane_surface(surface());
+    let now = std::time::Instant::now();
+    for title in ["first", "second", "third"] {
+        state.receive_notification(
+            &ClientEndpointId::Local,
+            SemanticNotification {
+                kind: SemanticNotificationKind::Custom,
+                title: title.into(),
+                body: None,
+                sound: None,
+                agent: None,
+                workspace_id: None,
+                tab_id: None,
+                pane_id: None,
+                position: None,
+            },
+            now,
+        );
+    }
+    state.compose(106, 20).expect("stacked frame");
+    assert_eq!(state.hits.notification_toasts.len(), 3);
+    let (middle, _) = state
+        .hits
+        .notification_toasts
+        .iter()
+        .find(|(_, index)| *index == 1)
+        .copied()
+        .expect("middle toast drawn");
+    let (newest, _) = state.hits.notification_toasts[0];
+
+    state.handle_raw_events(vec![RawInputEvent::Mouse(crossterm::event::MouseEvent {
+        kind: MouseEventKind::Down(MouseButton::Left),
+        column: middle.x,
+        row: middle.y,
+        modifiers: KeyModifiers::empty(),
+    })]);
+
+    assert_eq!(
+        state
+            .visible_notifications
+            .iter()
+            .map(|notification| notification.event.title.as_str())
+            .collect::<Vec<_>>(),
+        vec!["first", "third"]
+    );
+    state.tick_notifications(now + std::time::Duration::from_secs(24 * 60 * 60));
+    assert_eq!(state.visible_notifications.len(), 2);
+    state.compose(106, 20).expect("restacked frame");
+    let rects = state
+        .hits
+        .notification_toasts
+        .iter()
+        .map(|(rect, _)| *rect)
+        .collect::<Vec<_>>();
+    assert_eq!(rects[0], newest);
+    assert_eq!(rects[1].y, middle.y);
 }

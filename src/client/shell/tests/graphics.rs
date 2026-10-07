@@ -151,7 +151,7 @@ fn notifications_and_clipboard_feedback_only_cover_their_drawn_corners() {
             state.sidebar_collapsed = true;
             state.set_snapshot(Box::new(snapshot()));
             state.set_pane_surface(surface());
-            state.visible_notification = Some(ClientVisibleNotification {
+            state.visible_notifications = vec![ClientVisibleNotification {
                 endpoint_id: ClientEndpointId::Local,
                 event: SemanticNotification {
                     kind: SemanticNotificationKind::Custom,
@@ -165,7 +165,7 @@ fn notifications_and_clipboard_feedback_only_cover_their_drawn_corners() {
                     position: Some(position),
                 },
                 deadline: None,
-            });
+            }];
             state.compose(cols, rows).unwrap();
             let rect = state.hits.notification_toast;
             assert_graphics_cover(&mut state, rect, cols, rows);
