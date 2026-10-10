@@ -152,7 +152,14 @@ pub fn notification_context(
     ws_idx: usize,
     pane_id: PaneId,
 ) -> String {
-    let mut context = format!("{} · {}", workspace_label, ws_idx + 1);
+    // A worktree space is named apart from its repo, so name the repo too:
+    // spaces of different repos can share a name.
+    let mut context = match ws.worktree_space() {
+        Some(space) if space.is_linked_worktree && space.label != workspace_label => {
+            format!("{}/{} · {}", space.label, workspace_label, ws_idx + 1)
+        }
+        _ => format!("{} · {}", workspace_label, ws_idx + 1),
+    };
     if ws.tabs.len() > 1 {
         if let Some(tab_idx) = ws.find_tab_index_for_pane(pane_id) {
             if let Some(label) = ws.tab_display_name(tab_idx) {
@@ -2141,6 +2148,34 @@ mod tests {
         assert_eq!(
             notification_context(&state.workspaces[0], "__herdr_projects__", 0, root),
             "__herdr_projects__ · 1"
+        );
+    }
+
+    #[test]
+    fn notification_context_names_the_repo_of_a_linked_worktree_space() {
+        let mut state = app_with_workspaces(&["parent", "child"]);
+        mark_parent_worktree(&mut state, 0);
+        state.workspaces[1].worktree_space = Some(crate::workspace::WorktreeSpaceMembership {
+            key: "repo-key".into(),
+            label: "herdr".into(),
+            repo_root: "/repo/herdr".into(),
+            checkout_path: "/repo/herdr-child".into(),
+            is_linked_worktree: true,
+        });
+        let parent_root = state.workspaces[0].tabs[0].root_pane;
+        let child_root = state.workspaces[1].tabs[0].root_pane;
+
+        assert_eq!(
+            notification_context(&state.workspaces[0], "herdr", 0, parent_root),
+            "herdr · 1"
+        );
+        assert_eq!(
+            notification_context(&state.workspaces[1], "ui-improve", 1, child_root),
+            "herdr/ui-improve · 2"
+        );
+        assert_eq!(
+            notification_context(&state.workspaces[1], "herdr", 1, child_root),
+            "herdr · 2"
         );
     }
 
